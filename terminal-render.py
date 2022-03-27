@@ -2,10 +2,24 @@
 # This program is a self-contained 3d render engine that runs in the terminal.
 # do NOT try to run this program using the standard python IDE as it does not use ANSI escape codes.
 
+
+# EXPLAINATIONS:
 # Due to the time it takes to use the print command, sometimes the screen will refresh while the program is in the
 # process of clearing and redrawing the screen. this causes the screen to flash rapidly and the effect worsens the
 # higher your refresh rate is. At 60Hz it isn't that bad, but I would still be careful running this if you suffer from
 # any conditions that cause light sensitivity.
+
+# the constant, DITHER is a 4x4 bayer matrix. Basically, its a noise map that I use to offset what colour is displayed
+# at a given pixel. This aproximates colours that cannot be displayed nativly with the 8 colours used in the terminal.
+
+# There are only 8 colours because to draw two pixels per scan line i used the "▀" character, and set the foreground
+# and background colours independantly. The problem is that the upper 8 colours are only for the foreground and so 
+# im limited to just the lower 8.
+
+# The Mesh class is a bit useless, it would be more efficient to just store 4 lists and have a bunch of functions to
+# handdle appending, removing, and repacing. the clipMesh method is also very slow and one of the main limiting 
+# factors when it comes to speed. 
+
 
 # NOTES:
 # if your terminal uses more colours or just different ones, replace the values in the "COLOURS" constant with those
@@ -21,16 +35,17 @@ import os
 # If Machine is running on Windows, use cls
 if os.name in ('nt', 'dos'): CLS = "CLS"
 else: CLS = "clear"
+
 CURSER = '\033[1;37;40m -> '
 
 FOV = 60
 NEARCLIP = 0.1
-FARCLIP = 32
+FARCLIP = 64
 
 WIDTH, HEIGHT = 64, 48
 FPS = 60
 FPMS = FPS * 0.001
-LIGHTING = (0, 0.75, 0.25)
+LIGHTING = (0, -0.75, 0.25)  # Vector for angle of lighting, must be normalized.
 BRIGHTNESS = 0.25
 
 RST = "\033[0;37;40m"
@@ -668,7 +683,7 @@ class Surface:
 
         line = ""
         for _ in range((self.width // 2) - 6): line += "─"
-        self.bLine = "╰" + line + "ETHAN─PARKER" + line + "╯\n"
+        self.bLine = "╰" + line + "ETHAN─PARKER" + line + "╯"
 
     def get_at(self, x, y):
         colour = self.surface[x][y]
@@ -703,22 +718,26 @@ class Surface:
     def flip(self):
         """ This function draws the Surface to the console output. """
         # Draw screen boarder:
+        sLine = RST + "│"
+        output = (self.tLine,)
         
-        line = RST + "│"
-
-        print(self.tLine)
         # for each line, update and add it to the output:
         for y in range(0, self.height, 2):
-            try: 
-                output = line
-                for x in range(self.width - 1):
-                    tc = str(nearestColour(self.surface[x][y], DITHER[x % 4][y % 4] - 0.5 * 0.25, COLOURS))
-                    bc = str(nearestColour(self.surface[x][y + 1], DITHER[x % 4][(y + 1) % 4] - 0.5 * 0.25, COLOURS)) 
-                    output += "\033[0;3" + tc + ";4" + bc + "m▀"
-                print(output, line) 
-            except IndexError:
-                pass
-        print(self.bLine)
+            
+                line = "" + sLine 
+                for x in range(self.width):
+                    try: 
+                        tc = str(nearestColour(self.surface[x][y], DITHER[x % 4][y % 4] - 0.5 * 0.25, COLOURS))
+                        bc = str(nearestColour(self.surface[x][y + 1], DITHER[x % 4][(y + 1) % 4] - 0.5 * 0.25, COLOURS)) 
+                        line += "\033[0;3" + tc + ";4" + bc + "m▀"
+                    except IndexError:
+                        pass
+                line += sLine
+                output += (line,)
+            
+        output += (self.bLine,)
+
+        return output
         
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
@@ -932,9 +951,9 @@ class Game:
 
         return points
 
-    def render(self, windowSurface):
+    def render(self, time_start, windowSurface):
         """ This function renders the scene to a surface. """
-        time_start = time.perf_counter()
+        
         self.clear_depth()
         projected = self.projectPoints()
 
@@ -945,18 +964,17 @@ class Game:
        
         for i in indices: 
             p = projected[i]
-            brightness = ((p[3].dot(LIGHTING) + 1) * 0.5)
+            brightness = ((p[3].dot(LIGHTING) + 1) * 0.75)
             texturedPolygon(windowSurface, self.depth, p[0], p[1], p[2], brightness, self.texture)
-            # drawLine(windowSurface, p[0][0], p[1][0], (1,1,1))
-            # drawLine(windowSurface, p[1][0], p[2][0], (1,1,1))
-            # drawLine(windowSurface, p[0][0], p[2][0], (1,1,1))
 
+        frame = windowSurface.flip()
         frameDelta = (time.perf_counter() - time_start)
         time.sleep(frameDelta % FPMS)  # Wait for next opportunity to draw to screen:
 
         # Draw Screen:
         os.system(CLS)
-        windowSurface.flip()
+        for line in frame:
+            print(line)
 
         # Calculate real frame delta after writing to the "screen":
         self.frameDelta = (time.perf_counter() - time_start)
@@ -1020,14 +1038,16 @@ def main():
 
     windowSurface = Surface(WIDTH, HEIGHT)
     game = Game(mesh, texture, FOV, FARCLIP, NEARCLIP, (WIDTH, HEIGHT))
+    
     game.camera.position = Vect3(0, 0, -4)
+    
     # Main "game" loop.
     while True:
+        time_start = time.perf_counter()
         game.world.rotate_x(1)
-        game.world.rotate_y(1)
-        game.world.rotate_z(2)
-        game.render(windowSurface)
-        print(len(game.world))
+        game.world.rotate_y(2)
+        game.world.rotate_z(3)
+        game.render(time_start, windowSurface)
 
 
 main()
