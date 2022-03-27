@@ -11,6 +11,13 @@ any conditions that cause light sensitivity.
 NOTES:
 I have not tested this on Linux or Mac OS, I run a windows PC and that's it. sorry!
 
+if you want to use your own models with this program you must export them without normals but with UVs included.
+if you're using blender, when exporting make sure to click on the "Geometry" tab in the exporting menue, check the 
+"Triangulate faces" option, and un-check the "Write normals" option. It should now load correctly.
+
 if your terminal uses more colours or just different ones, replace the values in the "COLOURS" constant with those
 colours. if you have them as int 0:255, simply divide the R,G,B channels by 255.
 
+Thanks for checking this out! 
+
+-E. Parker
