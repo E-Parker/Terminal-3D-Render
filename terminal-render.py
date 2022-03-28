@@ -2,24 +2,13 @@
 # This program is a self-contained 3d render engine that runs in the terminal.
 # do NOT try to run this program using the standard python IDE as it does not use ANSI escape codes.
 
-
 # EXPLAINATIONS:
-# Due to the time it takes to use the print command, sometimes the screen will refresh while the program is in the
-# process of clearing and redrawing the screen. this causes the screen to flash rapidly and the effect worsens the
-# higher your refresh rate is. At 60Hz it isn't that bad, but I would still be careful running this if you suffer from
-# any conditions that cause light sensitivity.
-
 # the constant, DITHER is a 4x4 bayer matrix. Basically, its a noise map that I use to offset what colour is displayed
-# at a given pixel. This aproximates colours that cannot be displayed nativly with the 8 colours used in the terminal.
-
-# There are only 8 colours because to draw two pixels per scan line i used the "▀" character, and set the foreground
-# and background colours independantly. The problem is that the upper 8 colours are only for the foreground and so 
-# im limited to just the lower 8.
+# at a given pixel. This aproximates colours that cannot be displayed nativly with the 231 colours used in the terminal.
 
 # The Mesh class is a bit useless, it would be more efficient to just store 4 lists and have a bunch of functions to
 # handdle appending, removing, and repacing. the clipMesh method is also very slow and one of the main limiting 
 # factors when it comes to speed. 
-
 
 # NOTES:
 # if your terminal uses more colours or just different ones, replace the values in the "COLOURS" constant with those
@@ -27,8 +16,8 @@
 
 import math
 import time
-import copy
 import os
+from tkinter import Y
 
 # CONSTANTS:
 
@@ -36,27 +25,24 @@ import os
 if os.name in ('nt', 'dos'): CLS = "CLS"
 else: CLS = "clear"
 
-CURSER = '\033[1;37;40m -> '
+CURSER = '\033[15;0H\033[1;37;40m│-> '
 
-FOV = 60
+INT_255_TO_INT_6 = 0.02352941176  # Constant to convert an int[0-255] to int[0-6]. Used in 6 x 6 x 6 216 colour mode.
+
+FOV = 70
 NEARCLIP = 0.1
 FARCLIP = 64
 
-WIDTH, HEIGHT = 64, 48
+WIDTH, HEIGHT = 80, 60
 FPS = 60
-FPMS = FPS * 0.001
 LIGHTING = (0, -0.75, 0.25)  # Vector for angle of lighting, must be normalized.
-BRIGHTNESS = 0.25
 
 RST = "\033[0;37;40m"
-CLR_TO_DEC = 1 / 255
-COLOURS = ((0, 0, 0), (0.5, 0, 0), (0, 0.5, 0), (0.5, 0.5, 0),
-           (0, 0, 0.5), (0.5, 0, 0.5), (0, 0.5, 0.5), (0.75, 0.75, 0.75))
 
-DITHER = (((0 / 16), (8 / 16), (2 / 16), (10 / 16)),
-          ((12 / 16), (4 / 16), (14 / 16), (6 / 16)),
-          ((3 / 16), (11 / 16), (1 / 16), (9 / 16)),
-          ((15 / 16), (7 / 16), (13 / 16), (5 / 16)))
+DITHER = (((0 / 16) - 0.5,(8 / 16) - 0.5,(2 / 16) - 0.5,(10 / 16) - 0.5),
+        ((12 / 16) - 0.5,(4 / 16) - 0.5,(14 / 16) - 0.5,(6 / 16) - 0.5),
+        ((3 / 16) - 0.5,(11 / 16) - 0.5,(1 / 16) - 0.5,(9 / 16) - 0.5),
+        ((15 / 16) - 0.5,(7 / 16) - 0.5,(13 / 16) - 0.5,(5 / 16) - 0.5))
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
@@ -122,14 +108,14 @@ def loadBitmap(filename):
 
         pixelArray = []
         for x in range(int(rawBytes[10]), len(rawBytes), 3):
-            colour = (float(rawBytes[x]) * CLR_TO_DEC, float(rawBytes[x + 1]) * CLR_TO_DEC, float(rawBytes[x + 2]) * CLR_TO_DEC)  # Convert byte to float(0 - 1)
+            colour = (int(rawBytes[x]), int(rawBytes[x + 1]), int(rawBytes[x + 2]))   # Convert byte to float(0 - 1)
             pixelArray.append(colour)
 
-        pixelArray.reverse()  # Reverse the image to make it apper properly
+        # pixelArray.reverse()  # Reverse the image to make it apper properly
         # Write data to texture:
         texture = Surface(width, height)
         for y in range(height):
-            for x in range(width - 1, -1, -1):
+            for x in range(width): # - 1, -1, -1):
                 texture.set_at((x, y), pixelArray[(y * width) + x])
 
         return texture
@@ -645,24 +631,24 @@ class Camera:
 # SURFACE CLASS AND METHODS
 
 
-def colourDistance(c1, c2):
-    """ This function returns the relative distance between two colours, or rather how similar they are. """
-    r1, g1, b1 = c1[0], c1[1], c1[2]
-    r2, g2, b2 = c2[0], c2[1], c2[2]
-
-    d = math.sqrt(((r2-r1) * (r2-r1)) + ((g2-g1) * (g2-g1)) + ((b2-b1) * (b2-b1)))
-    return d
+def threshold(value, maximum, minimum):
+    if value < minimum: return minimum
+    elif value > maximum: return maximum
+    return value
 
 
-def nearestColour(colour, dither, comparison):
-    colour = (colour[0] + dither, colour[1] + dither, colour[2] + dither)
-    checked = []
+def RGB_to_256_Colour(r, g ,b, d):
+ return str(16 + (36 * threshold(int(b * INT_255_TO_INT_6 + d), 5, 0) + 
+                  (6 * threshold(int(g * INT_255_TO_INT_6 + d), 5, 0) + 
+                       threshold(int(r * INT_255_TO_INT_6 + d), 5, 0))))
+
+
+def setPixel(x, y, fColour, bColour):
     
-    for index in comparison:
-        checked.append(colourDistance(colour, index))
-    nearest = min(checked)
+    fc = RGB_to_256_Colour(fColour[0], fColour[1], fColour[2], DITHER[x % 4][y % 4])
+    bc = RGB_to_256_Colour(bColour[0], bColour[1], bColour[2], DITHER[x % 4][(y + 1) % 4])
 
-    return checked.index(nearest)
+    return  '\033' + f'[{y // 2};{x}f' + '\033[0;' + u"\u001b[38;5;" + fc + "m" + u"\u001b[48;5;" + bc + "m▀"
 
 
 class Surface:
@@ -675,15 +661,6 @@ class Surface:
         self.surface = []
         self.line = [(0, 0, 0) for _ in range(self.height)]
         self.clear()
-
-        # Stuff for drawing screen border:
-        self.tLine = RST + "\n╭"
-        for _ in range(self.width): self.tLine += "─"
-        self.tLine += "╮"
-
-        line = ""
-        for _ in range((self.width // 2) - 6): line += "─"
-        self.bLine = "╰" + line + "ETHAN─PARKER" + line + "╯"
 
     def get_at(self, x, y):
         colour = self.surface[x][y]
@@ -701,14 +678,14 @@ class Surface:
         self.surface = []
         line = [colour for _ in range(self.height)]
         for _ in range(self.width):
-            self.surface.append(copy.deepcopy(line))
+            self.surface.append(line[:])
     
     def clear(self):
         """ This function clears a surface, writing 0's to each pixel. ever so slightly faster than filling with
         black. """
         self.surface = []
         for _ in range(self.width):
-            self.surface.append(copy.deepcopy(self.line))
+            self.surface.append(self.line[:])
 
     def blit(self, surface, x, y):
         for lclY in range(y, min(self.height, (surface.height + y))):
@@ -718,26 +695,15 @@ class Surface:
     def flip(self):
         """ This function draws the Surface to the console output. """
         # Draw screen boarder:
-        sLine = RST + "│"
-        output = (self.tLine,)
-        
+        output = ""
         # for each line, update and add it to the output:
-        for y in range(0, self.height, 2):
-            
-                line = "" + sLine 
+        for y in range(0,self.height,2):
                 for x in range(self.width):
                     try: 
-                        tc = str(nearestColour(self.surface[x][y], DITHER[x % 4][y % 4] - 0.5 * 0.25, COLOURS))
-                        bc = str(nearestColour(self.surface[x][y + 1], DITHER[x % 4][(y + 1) % 4] - 0.5 * 0.25, COLOURS)) 
-                        line += "\033[0;3" + tc + ";4" + bc + "m▀"
+                        output += setPixel(x, y, self.surface[x][y], self.surface[x][y + 1])
                     except IndexError:
                         pass
-                line += sLine
-                output += (line,)
-            
-        output += (self.bLine,)
-
-        return output
+        print(output)     
         
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
@@ -897,13 +863,15 @@ def texturedPolygon(surface, depth, a, b, c, brightness, texture):
                 x = lclX + rsOffset
                 inv_z = interp(ls.z, ls.x, rs.z, rs.x, x)
                 if depth[x][y] > inv_z:
+
                     z = 1 / inv_z
                     u = (interp(tls.x, ls.x, trs.x, rs.x, x) * z) % 1
                     v = (interp(tls.y, ls.x, trs.y, rs.x, x) * z) % 1
-                    
                     colour = texture.get_at(int(u * (texture.width - 1)), int(v * (texture.height - 1)))
-                    surface.set_at((x, y), (colour[0] - brightness, colour[1] - brightness, colour[2] - brightness))
-                    depth[x][y] = inv_z
+
+                    if colour != (255, 0, 255):
+                        surface.set_at((x, y), (colour[0] + brightness, colour[1] + brightness, colour[2] + brightness))
+                        depth[x][y] = inv_z
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 
@@ -929,7 +897,7 @@ class Game:
         """ This method rotates and projects a mesh to world space. """
 
         # Update normals, clip mesh, rotate and move to camera's view
-        points = copy.deepcopy(self.world)
+        points = Mesh(self.world.vertices[:], self.world.polygons[:], self.world.uv_vertices[:], self.world.uv_polygons[:])
         points.move(Vect3(0,0,0) - self.camera.position)
         points.rotate_x(self.camera.x_rotation)
         points.rotate_y(self.camera.y_rotation)
@@ -960,21 +928,15 @@ class Game:
         indices = list(range(len(projected)))
         indices = QuickSort(projected.depth, indices)[1]
         
-        windowSurface.fill((-1, -1, -1))
+        windowSurface.fill((0, 0, 0))
        
         for i in indices: 
             p = projected[i]
-            brightness = ((p[3].dot(LIGHTING) + 1) * 0.75)
+            direction = p[3].dot(LIGHTING)
+            brightness = direction * 32
             texturedPolygon(windowSurface, self.depth, p[0], p[1], p[2], brightness, self.texture)
 
-        frame = windowSurface.flip()
-        frameDelta = (time.perf_counter() - time_start)
-        time.sleep(frameDelta % FPMS)  # Wait for next opportunity to draw to screen:
-
-        # Draw Screen:
-        os.system(CLS)
-        for line in frame:
-            print(line)
+        windowSurface.flip()
 
         # Calculate real frame delta after writing to the "screen":
         self.frameDelta = (time.perf_counter() - time_start)
@@ -994,28 +956,30 @@ def drawTitle():
     print('│\033[1;35;40m          88"Yb  88""   88 Y88  8I  dY 88""   88"Yb          \033[1;37;40m│')
     print('│\033[1;37;40m          88  Yb 888888 88  Y8 8888Y"  888888 88  Yb         \033[1;37;40m│')
     print('│\033[1;37;40m                                                             \033[1;37;40m│')
-
+    print('│\033[1;37;40m                                                             \033[1;37;40m│')
+    print('│\033[1;37;40m                                                             \033[1;37;40m│')
+    print('│\033[1;37;40m                                                             \033[1;37;40m│')
+    print('│\033[1;37;40m                                                             \033[1;37;40m│')
+    print('\033[1;37;40m╰─────────────────────────────────────────────────────────────╯')
 
 def invalidInput():
-    os.system(CLS)
-    drawTitle()
-    print('\033[1;37;40m│      Error, File Not Found! \033[1;31;40mPress any key to continue.\033[1;37;40m      │')
-    print('\033[1;37;40m╰─────────────────────────────────────────────────────────────╯')
+    print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
+    print('\033[12;8HError, File Not Found! \033[1;31;40mPress any key to continue.\033[1;37;40m')
     input(CURSER)
+    print(('\033[12;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
 
 
 def main():
-    
-    
+    os.system(CLS)
+    drawTitle()
+      
     objLoaded = False
     texLoaded = False
 
     while not objLoaded:
         try:
-            os.system(CLS)
-            drawTitle()
-            print('\033[1;37;40m│       Please enter the name of a mesh ending in\033[1;31;40m .obj\033[1;37;40m        │')
-            print('\033[1;37;40m╰─────────────────────────────────────────────────────────────╯')
+            print('\033[12;10H Please enter the name of a mesh ending in\033[1;31;40m .obj\033[1;37;40m')
+            print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
             filename = input(CURSER)
             mesh = loadMesh(filename)
             objLoaded = True
@@ -1025,16 +989,15 @@ def main():
 
     while not texLoaded:
         try:
-            os.system(CLS)
-            drawTitle()
-            print('\033[1;37;40m│      Please enter the name of a texture ending in\033[1;31;40m .bmp\033[1;37;40m      │')
-            print('\033[1;37;40m╰─────────────────────────────────────────────────────────────╯')
+            print('\033[12;9H Please enter the name of a texture ending in\033[1;31;40m .bmp\033[1;37;40m;')
+            print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
             filename = input(CURSER)
             texture = loadBitmap(filename)
             texLoaded = True
         except:
             invalidInput()
             texLoaded = False
+
 
     windowSurface = Surface(WIDTH, HEIGHT)
     game = Game(mesh, texture, FOV, FARCLIP, NEARCLIP, (WIDTH, HEIGHT))
@@ -1044,11 +1007,11 @@ def main():
     # Main "game" loop.
     while True:
         time_start = time.perf_counter()
-        game.world.rotate_x(1)
-        game.world.rotate_y(2)
-        game.world.rotate_z(3)
+        game.world.rotate_x(4 * game.frameDelta)
+        game.world.rotate_y(6 * game.frameDelta)
+        game.world.rotate_z(8 * game.frameDelta)
         game.render(time_start, windowSurface)
 
-
 main()
+
 
