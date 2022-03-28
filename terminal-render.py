@@ -972,9 +972,7 @@ class Game:
         time.sleep(frameDelta % FPMS)  # Wait for next opportunity to draw to screen:
 
         # Draw Screen:
-        os.system(CLS)
-        for line in frame:
-            print(line)
+        print("\x1b[1A\x1b[2K"*(len(frame)+1) + "\n".join(frame))
 
         # Calculate real frame delta after writing to the "screen":
         self.frameDelta = (time.perf_counter() - time_start)
