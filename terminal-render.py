@@ -20,15 +20,9 @@ import os
 from tkinter import Y
 
 # CONSTANTS:
-
-# If Machine is running on Windows, use cls
-if os.name in ('nt', 'dos'): CLS = "CLS"
-else: CLS = "clear"
-
 CURSER = '\033[15;0H\033[1;37;40m│-> '
-
-INT_255_TO_INT_6 = 0.02352941176  # Constant to convert an int[0-255] to int[0-6]. Used in 6 x 6 x 6 216 colour mode.
-
+INT_255_TO_INT_6 = 6 / 255 # Constant to convert an int[0-255] to int[0-6]. Used in 6 x 6 x 6 216 colour mode.
+INT_255_TO_INT_24 = 24 / 255
 FOV = 70
 NEARCLIP = 0.1
 FARCLIP = 64
@@ -638,13 +632,16 @@ def threshold(value, maximum, minimum):
 
 
 def RGB_to_256_Colour(r, g ,b, d):
- return str(16 + (36 * threshold(int(b * INT_255_TO_INT_6 + d), 5, 0) + 
-                  (6 * threshold(int(g * INT_255_TO_INT_6 + d), 5, 0) + 
-                       threshold(int(r * INT_255_TO_INT_6 + d), 5, 0))))
+    if r != g or g != b:    # Colour is not grayscale, (16 - 231)
+        return str(16 + (36 * threshold(int(b * INT_255_TO_INT_6 + d), 5, 0) + 
+                         (6 * threshold(int(g * INT_255_TO_INT_6 + d), 5, 0) + 
+                              threshold(int(r * INT_255_TO_INT_6 + d), 5, 0))))
+    else:                   # colour is grayscale, (232 - 255)
+        return str(232 + threshold(int(r * INT_255_TO_INT_24 + d), 23, 0))
 
 
 def setPixel(x, y, fColour, bColour):
-    
+    """ This function generates the ANSI escape sequence for setting a pare of pixels. """
     fc = RGB_to_256_Colour(fColour[0], fColour[1], fColour[2], DITHER[x % 4][y % 4])
     bc = RGB_to_256_Colour(bColour[0], bColour[1], bColour[2], DITHER[x % 4][(y + 1) % 4])
 
@@ -711,7 +708,7 @@ class Surface:
 
 
 def interpLine(v1, v2):
-    """ This function draws a line on the screen from v1 to v2."""
+    """ This function interpolates a line on the screen from v1 to v2."""
     # Check that interpolation is even possible:
     start, end = round(v1[1]), round(v2[1])
     if start - end == 0:
@@ -758,7 +755,6 @@ def interpVertexLine(a, b):
 
 def drawLine(surface, v1, v2, colour):
     """ This function draws a line on the screen from v1 to v2."""
-    
     try:
         slope = (v2[1] - v1[1]) / (v2[0] - v1[0])
     except ZeroDivisionError: # Slope is undefined, line must be vertical.
@@ -802,10 +798,6 @@ def drawLine(surface, v1, v2, colour):
         for y in range(Start + 1, End):
             # generate new position
             surface.set_at((int(quickInterp(v1[0], v1[1], v2[0], inv_dist, y)), y), colour)
-
-
-def drawPoint(surface, point, colour):
-    surface.set_at(point, colour)
 
 
 def drawPolygon(surface, v1, v2, v3, brightness, colour):
@@ -964,13 +956,14 @@ def drawTitle():
 
 def invalidInput():
     print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
-    print('\033[12;8HError, File Not Found! \033[1;31;40mPress any key to continue.\033[1;37;40m')
+    print('\033[13;8HError, File Not Found! \033[1;31;40mPress any key to continue.\033[1;37;40m')
     input(CURSER)
-    print(('\033[12;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
+    print(('\033[13;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
 
 
 def main():
-    os.system(CLS)
+    os.system("")           # os call to enable ANSI codes:
+    print('\033[2;J\033[H') # Clear screen and reset cursor possition:
     drawTitle()
       
     objLoaded = False
@@ -978,7 +971,7 @@ def main():
 
     while not objLoaded:
         try:
-            print('\033[12;10H Please enter the name of a mesh ending in\033[1;31;40m .obj\033[1;37;40m')
+            print('\033[13;10H Please enter the name of a mesh ending in\033[1;31;40m .obj\033[1;37;40m')
             print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
             filename = input(CURSER)
             mesh = loadMesh(filename)
@@ -989,7 +982,7 @@ def main():
 
     while not texLoaded:
         try:
-            print('\033[12;9H Please enter the name of a texture ending in\033[1;31;40m .bmp\033[1;37;40m;')
+            print('\033[13;9H Please enter the name of a texture ending in\033[1;31;40m .bmp\033[1;37;40m')
             print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
             filename = input(CURSER)
             texture = loadBitmap(filename)
