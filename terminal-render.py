@@ -925,7 +925,7 @@ class Game:
         for i in indices: 
             p = projected[i]
             direction = p[3].dot(LIGHTING)
-            brightness = direction * 32
+            brightness = direction * -64
             texturedPolygon(windowSurface, self.depth, p[0], p[1], p[2], brightness, self.texture)
 
         windowSurface.flip()
