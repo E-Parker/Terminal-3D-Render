@@ -17,7 +17,6 @@
 import math
 import time
 import os
-from tkinter import Y
 
 # CONSTANTS:
 CURSER = '\033[15;0H\033[1;37;40m│-> '
@@ -956,6 +955,7 @@ def drawTitle():
 
 def invalidInput():
     print(('\033[15;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
+    print(('\033[13;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
     print('\033[13;8HError, File Not Found! \033[1;31;40mPress any key to continue.\033[1;37;40m')
     input(CURSER)
     print(('\033[13;0H│\033[1;37;40m                                                             \033[1;37;40m│'))
